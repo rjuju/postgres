@@ -645,6 +645,22 @@ RelationBuildPartitionDesc(Relation rel)
 
 					/* All partition must now have a valid mapping */
 					Assert(next_index == nparts);
+
+					/* check if there are interleaved values or not */
+					if (nparts > 0 && default_index == -1)
+					{
+						result->part_sorted = true;
+						next_index = 1;
+
+						while (next_index < boundinfo->ndatums && result->part_sorted)
+						{
+							result->part_sorted =
+								boundinfo->indexes[next_index-1] <=
+								boundinfo->indexes[next_index];
+
+							next_index++;
+						}
+					}
 					break;
 				}
 
@@ -705,6 +721,12 @@ RelationBuildPartitionDesc(Relation rel)
 						mapping[default_index] = next_index++;
 						boundinfo->default_index = mapping[default_index];
 					}
+					else
+						/*
+						 * range partitions without default index are guaranted
+						 * to be in partition bound order
+						 */
+						result->part_sorted = true;
 					boundinfo->indexes[i] = -1;
 					break;
 				}

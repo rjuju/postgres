@@ -38,6 +38,8 @@ typedef struct PartitionDescData
 	int			nparts;			/* Number of partitions */
 	Oid		   *oids;			/* OIDs of partitions */
 	PartitionBoundInfo boundinfo;	/* collection of partition bounds */
+	bool		part_sorted;	/* Partitions are in partition bound order, and
+								   there is not default partition */
 } PartitionDescData;
 
 typedef struct PartitionDescData *PartitionDesc;
