@@ -1548,8 +1548,8 @@ add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
 	 * if we have zero or one live subpath due to constraint exclusion.)
 	 */
 	if (subpaths_valid)
-		add_path(rel, (Path *) create_append_path(rel, subpaths, NIL,
-												  NULL, 0, false,
+		add_path(rel, (Path *) create_append_path(root, rel, subpaths, NIL,
+												  NIL, NULL, 0, false,
 												  partitioned_rels, -1));
 
 	/*
@@ -1590,8 +1590,8 @@ add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
 		Assert(parallel_workers > 0);
 
 		/* Generate a partial append path. */
-		appendpath = create_append_path(rel, NIL, partial_subpaths, NULL,
-										parallel_workers,
+		appendpath = create_append_path(root, rel, NIL, partial_subpaths, NIL,
+										NULL, parallel_workers,
 										enable_parallel_append,
 										partitioned_rels, -1);
 
@@ -1639,8 +1639,8 @@ add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
 							   max_parallel_workers_per_gather);
 		Assert(parallel_workers > 0);
 
-		appendpath = create_append_path(rel, pa_nonpartial_subpaths,
-										pa_partial_subpaths,
+		appendpath = create_append_path(root, rel, pa_nonpartial_subpaths,
+										pa_partial_subpaths, NIL,
 										NULL, parallel_workers, true,
 										partitioned_rels, partial_rows);
 		add_partial_path(rel, (Path *) appendpath);
@@ -1695,7 +1695,7 @@ add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
 
 		if (subpaths_valid)
 			add_path(rel, (Path *)
-					 create_append_path(rel, subpaths, NIL,
+					 create_append_path(root, rel, subpaths, NIL, NIL,
 										required_outer, 0, false,
 										partitioned_rels, -1));
 	}
@@ -1961,7 +1961,7 @@ set_dummy_rel_pathlist(RelOptInfo *rel)
 	rel->pathlist = NIL;
 	rel->partial_pathlist = NIL;
 
-	add_path(rel, (Path *) create_append_path(rel, NIL, NIL, NULL,
+	add_path(rel, (Path *) create_append_path(NULL, rel, NIL, NIL, NIL, NULL,
 											  0, false, NIL, -1));
 
 	/*

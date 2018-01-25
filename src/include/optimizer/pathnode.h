@@ -64,9 +64,9 @@ extern BitmapOrPath *create_bitmap_or_path(PlannerInfo *root,
 					  List *bitmapquals);
 extern TidPath *create_tidscan_path(PlannerInfo *root, RelOptInfo *rel,
 					List *tidquals, Relids required_outer);
-extern AppendPath *create_append_path(RelOptInfo *rel,
+extern AppendPath *create_append_path(PlannerInfo *root, RelOptInfo *rel,
 				   List *subpaths, List *partial_subpaths,
-				   Relids required_outer,
+				   List *pathkeys, Relids required_outer,
 				   int parallel_workers, bool parallel_aware,
 				   List *partitioned_rels, double rows);
 extern MergeAppendPath *create_merge_append_path(PlannerInfo *root,

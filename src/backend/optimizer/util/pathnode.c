@@ -1210,9 +1210,9 @@ create_tidscan_path(PlannerInfo *root, RelOptInfo *rel, List *tidquals,
  * Note that we must handle subpaths = NIL, representing a dummy access path.
  */
 AppendPath *
-create_append_path(RelOptInfo *rel,
+create_append_path(PlannerInfo *root, RelOptInfo *rel,
 				   List *subpaths, List *partial_subpaths,
-				   Relids required_outer,
+				   List *pathkeys, Relids required_outer,
 				   int parallel_workers, bool parallel_aware,
 				   List *partitioned_rels, double rows)
 {
@@ -3567,8 +3567,8 @@ reparameterize_path(PlannerInfo *root, Path *path,
 					i++;
 				}
 				return (Path *)
-					create_append_path(rel, childpaths, partialpaths,
-									   required_outer,
+					create_append_path(NULL, rel, childpaths, partialpaths,
+									   NIL, required_outer,
 									   apath->path.parallel_workers,
 									   apath->path.parallel_aware,
 									   apath->partitioned_rels,
