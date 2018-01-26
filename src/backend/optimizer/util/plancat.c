@@ -35,6 +35,7 @@
 #include "nodes/makefuncs.h"
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
+#include "optimizer/paths.h"
 #include "optimizer/plancat.h"
 #include "optimizer/predtest.h"
 #include "optimizer/prep.h"
@@ -1132,6 +1133,140 @@ get_relation_data_width(Oid relid, int32 *attr_widths)
 	heap_close(relation, NoLock);
 
 	return result;
+}
+
+/*
+ * Generate pathkeys for partitioned tables that have a natural ordering
+ * compatible with the query ordering
+ */
+void
+generate_pathkeys_for_partitioned_tables(PlannerInfo *root)
+{
+	int rti;
+
+	for (rti = 1; rti < root->simple_rel_array_size; rti++)
+	{
+		RelOptInfo *rel = root->simple_rel_array[rti];
+
+		if (rel && has_useful_pathkeys(root, rel))
+		{
+			Index varno = rel->relid;
+			Index parent_varno;
+			RelOptInfo *parent_rel = rel;
+			Relation relation;
+			RangeTblEntry *rte = planner_rt_fetch(varno, root);
+
+			if (rte->relkind != RELKIND_PARTITIONED_TABLE)
+				continue;
+
+			/* find root partitioned table in case of subpartitioned table */
+			while (parent_rel->reloptkind != RELOPT_BASEREL)
+			{
+				ListCell *lc;
+
+				foreach(lc, root->append_rel_list)
+				{
+					AppendRelInfo *ari = lfirst(lc);
+
+					if (ari->child_relid == parent_rel->relid)
+					{
+						parent_rel = root->simple_rel_array[ari->parent_relid];
+						break;
+					}
+
+					/*
+					 * Should never happend: we should always be able to climb
+					 * up the inheritance tree
+					 */
+					if (!lc)
+						elog(ERROR, "Unable to find parent table for child");
+				}
+			}
+			parent_varno = parent_rel->relid;
+
+			relation = heap_open(rte->relid, NoLock);
+
+			if (relation->rd_partdesc->part_sorted)
+			{
+				int i;
+				ListCell *lc;
+				Oid equality_op;
+				EquivalenceClass *ec;
+				List *opfamilies;
+				List *asc_pathkeys = NIL;
+				List *desc_pathkeys = NIL;
+
+				Assert(rel->part_order_pathkeys == NIL);
+
+				/* Lookup individual vars from the pathtarget */
+				lc = list_head(relation->rd_partkey->partexprs);
+				for (i = 0; i < relation->rd_partkey->partnatts; i++)
+				{
+					AttrNumber attno = relation->rd_partkey->partattrs[i];
+					Expr *expr = NULL;
+
+					/* This is not an attribute, but an expression */
+					if (attno == InvalidAttrNumber)
+					{
+						/*
+						 * Should never happend: we should always be able to
+						 * fetch an expression for anything in the partition
+						 * key
+						 */
+						if (!lc)
+							elog(ERROR, "Could not find expression for partition key %d",
+									i);
+
+						expr = lfirst(lc);
+						lc = lnext(lc);
+					}
+					else
+					{
+						expr = (Expr *) makeVar(parent_varno, attno,
+								relation->rd_partkey->parttypid[i],
+								relation->rd_partkey->parttypmod[i],
+								relation->rd_partkey->parttypcoll[i],
+								0);
+					}
+
+					equality_op =
+						get_opfamily_member(relation->rd_partkey->partopfamily[i],
+								relation->rd_partkey->partopcintype[i],
+								relation->rd_partkey->partopcintype[i],
+								BTEqualStrategyNumber);
+
+					opfamilies = get_mergejoin_opfamilies(equality_op);
+
+					ec = get_eclass_for_sort_expr(root, expr, NULL, opfamilies,
+							relation->rd_partkey->partopcintype[i],
+							relation->rd_partkey->partcollation[i],
+							0, rel->relids, true);
+
+					asc_pathkeys = lappend(asc_pathkeys,
+							make_canonical_pathkey(root, ec,
+								relation->rd_partkey->partopfamily[i],
+								BTLessStrategyNumber, false));
+					desc_pathkeys = lappend(desc_pathkeys,
+							make_canonical_pathkey(root, ec,
+								relation->rd_partkey->partopfamily[i],
+								BTGreaterStrategyNumber, false));
+				}
+
+				if (list_length(asc_pathkeys) > list_length(root->query_pathkeys))
+				{
+					asc_pathkeys = truncate_useless_pathkeys(root, rel, asc_pathkeys);
+					desc_pathkeys = truncate_useless_pathkeys(root, rel, desc_pathkeys);
+				}
+
+				if (asc_pathkeys)
+					rel->part_order_pathkeys = lappend(rel->part_order_pathkeys, asc_pathkeys);
+				if (desc_pathkeys)
+					rel->part_order_pathkeys = lappend(rel->part_order_pathkeys, desc_pathkeys);
+			}
+
+			heap_close(relation, NoLock);
+		}
+	}
 }
 
 
