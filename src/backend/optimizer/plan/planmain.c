@@ -178,13 +178,6 @@ query_planner(PlannerInfo *root, List *tlist,
 	(*qp_callback) (root, qp_extra);
 
 	/*
-	 * We consider generating pathkeys for partitioned tables only if the
-	 * query has some ordering
-	 */
-	if (root->query_pathkeys != NIL)
-		generate_pathkeys_for_partitioned_tables(root);
-
-	/*
 	 * Examine any "placeholder" expressions generated during subquery pullup.
 	 * Make sure that the Vars they need are marked as needed at the relevant
 	 * join level.  This must be done before join removal because it might

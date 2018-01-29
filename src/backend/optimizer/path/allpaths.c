@@ -94,7 +94,7 @@ static void set_append_rel_size(PlannerInfo *root, RelOptInfo *rel,
 					Index rti, RangeTblEntry *rte);
 static void set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 						Index rti, RangeTblEntry *rte);
-static void generate_mergeappend_paths(PlannerInfo *root, RelOptInfo *rel,
+static void generate_sorted_append_paths(PlannerInfo *root, RelOptInfo *rel,
 						   List *live_childrels,
 						   List *all_child_pathkeys,
 						   List *partitioned_rels);
@@ -1651,7 +1651,7 @@ add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
 	 * list of child pathkeys.
 	 */
 	if (subpaths_valid)
-		generate_mergeappend_paths(root, rel, live_childrels,
+		generate_sorted_append_paths(root, rel, live_childrels,
 								   all_child_pathkeys,
 								   partitioned_rels);
 
@@ -1702,8 +1702,9 @@ add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
 }
 
 /*
- * generate_mergeappend_paths
- *		Generate MergeAppend paths for an append relation
+ * generate_sorted_append_paths
+ *		Generate MergeAppend paths for an append relation, or sorted Append
+ *		Paths if the partition table has a compatible native ordering
  *
  * Generate a path for each ordering (pathkey list) appearing in
  * all_child_pathkeys.
@@ -1725,12 +1726,19 @@ add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
  * optimizer/README for why that might not ever happen, though.)
  */
 static void
-generate_mergeappend_paths(PlannerInfo *root, RelOptInfo *rel,
+generate_sorted_append_paths(PlannerInfo *root, RelOptInfo *rel,
 						   List *live_childrels,
 						   List *all_child_pathkeys,
 						   List *partitioned_rels)
 {
 	ListCell   *lcp;
+
+	if (rel->part_sorted && has_useful_pathkeys(root, rel))
+	{
+		List *part_pathkeys;
+
+		part_pathkeys = generate_pathkeys_for_partitioned_table(root, rel);
+}
 
 	foreach(lcp, all_child_pathkeys)
 	{

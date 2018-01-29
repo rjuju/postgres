@@ -531,6 +531,7 @@ typedef struct PartitionSchemeData *PartitionScheme;
  * 		nparts - Number of partitions
  * 		part_rels - RelOptInfos for each partition
  * 		partexprs, nullable_partexprs - Partition key expressions
+ * 		part_sorted - Wether the partition have a natural order
  *
  * Note: A base relation always has only one set of partition keys, but a join
  * relation may have as many sets of partition keys as the number of relations
