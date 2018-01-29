@@ -663,6 +663,8 @@ typedef struct RelOptInfo
 	List	  **nullable_partexprs; /* Nullable partition key expressions. */
 	List	   *part_order_pathkeys; /* Parthkeys representing the partition
 										key if a nartual order exists */
+	bool		part_sorted;		/* Partitions are in partition bound order,
+									   and there is not default partition */
 } RelOptInfo;
 
 /*

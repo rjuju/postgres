@@ -1980,6 +1980,7 @@ set_relation_partition_info(PlannerInfo *root, RelOptInfo *rel,
 	Assert(partdesc != NULL && rel->part_scheme != NULL);
 	rel->boundinfo = partition_bounds_copy(partdesc->boundinfo, partkey);
 	rel->nparts = partdesc->nparts;
+	rel->part_sorted = partdesc->part_sorted;
 	set_baserel_partition_key_exprs(relation, rel);
 }
 
