@@ -1142,38 +1142,12 @@ get_relation_data_width(Oid relid, int32 *attr_widths)
 List *
 generate_pathkeys_for_partitioned_table(PlannerInfo *root, RelOptInfo *rel)
 {
-	Index parent_varno;
 	RelOptInfo *parent_rel = rel;
 	List *asc_pathkeys;
 	List *desc_pathkeys;
 	int i;
 
 	Assert(rel->part_sorted);
-
-	/* find root partitioned table in case of subpartitioned table */
-	while (parent_rel->reloptkind != RELOPT_BASEREL)
-	{
-		ListCell *lc;
-
-		foreach(lc, root->append_rel_list)
-		{
-			AppendRelInfo *ari = lfirst(lc);
-
-			if (ari->child_relid == parent_rel->relid)
-			{
-				parent_rel = root->simple_rel_array[ari->parent_relid];
-				break;
-			}
-
-			/*
-			 * Should never happend: we should always be able to climb
-			 * up the inheritance tree
-			 */
-			if (!lc)
-				elog(ERROR, "Unable to find parent table for child");
-		}
-	}
-	parent_varno = parent_rel->relid;
 
 	/* Lookup individual vars from the pathtarget */
 	for (i = 0; i < rel->part_scheme->partnatts; i++)
