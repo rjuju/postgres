@@ -1142,9 +1142,8 @@ get_relation_data_width(Oid relid, int32 *attr_widths)
 List *
 generate_pathkeys_for_partitioned_table(PlannerInfo *root, RelOptInfo *rel)
 {
-	RelOptInfo *parent_rel = rel;
-	List *asc_pathkeys;
-	List *desc_pathkeys;
+	List *asc_pathkeys = NIL;
+	List *desc_pathkeys = NIL;
 	int i;
 
 	Assert(rel->part_sorted);
