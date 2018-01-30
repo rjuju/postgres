@@ -1144,6 +1144,7 @@ generate_pathkeys_for_partitioned_table(PlannerInfo *root, RelOptInfo *rel)
 {
 	List *asc_pathkeys = NIL;
 	List *desc_pathkeys = NIL;
+	List *all = NIL;
 	int i;
 
 	Assert(rel->part_sorted);
@@ -1185,7 +1186,11 @@ generate_pathkeys_for_partitioned_table(PlannerInfo *root, RelOptInfo *rel)
 		desc_pathkeys = truncate_useless_pathkeys(root, rel, desc_pathkeys);
 	}
 
-	return list_make2(asc_pathkeys, desc_pathkeys);
+	if (asc_pathkeys)
+		all = lappend(all, asc_pathkeys);
+	if (desc_pathkeys)
+		all = lappend(all, desc_pathkeys);
+	return all;
 }
 
 

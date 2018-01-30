@@ -1742,6 +1742,7 @@ generate_sorted_append_paths(PlannerInfo *root, RelOptInfo *rel,
 
 		part_pathkeys = generate_pathkeys_for_partitioned_table(root, rel);
 
+		/* part_pathkeys may be NIL */
 		for (i = 0; i < rel->nparts; i++)
 		{
 			partitions_asc = lappend(partitions_asc, rel->part_rels[i]);
@@ -1760,10 +1761,10 @@ generate_sorted_append_paths(PlannerInfo *root, RelOptInfo *rel,
 			bool startup_neq_total = false;
 			ListCell *lcr;
 
-			if (compare_pathkeys(pathkeys, root->query_pathkeys) ==
-					PATHKEYS_DIFFERENT)
+			if (!pathkeys_contained_in(root->query_pathkeys, pathkeys))
 				continue;
 
+			first = linitial(pathkeys);
 			foreach(lcr, ordered_patitions)
 			{
 				RelOptInfo *childrel = lfirst(lcr);
