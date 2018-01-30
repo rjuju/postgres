@@ -1177,7 +1177,7 @@ generate_pathkeys_for_partitioned_table(PlannerInfo *root, RelOptInfo *rel)
 		desc_pathkeys = lappend(desc_pathkeys,
 				make_canonical_pathkey(root, ec,
 					rel->part_scheme->partopfamily[i],
-					BTGreaterStrategyNumber, false));
+					BTGreaterStrategyNumber, true));
 	}
 
 	if (list_length(asc_pathkeys) > list_length(root->query_pathkeys))
