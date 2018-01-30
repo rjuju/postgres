@@ -1220,6 +1220,8 @@ create_append_path(PlannerInfo *root, RelOptInfo *rel,
 	ListCell   *l;
 
 	Assert(!parallel_aware || parallel_workers > 0);
+	/* Parallel aware sorted append is not supported */
+	Assert(parallel_workers > 0 ? pathkeys == NIL : true);
 
 	pathnode->path.pathtype = T_Append;
 	pathnode->path.parent = rel;
@@ -1229,7 +1231,7 @@ create_append_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->path.parallel_aware = parallel_aware;
 	pathnode->path.parallel_safe = rel->consider_parallel;
 	pathnode->path.parallel_workers = parallel_workers;
-	pathnode->path.pathkeys = NIL;	/* result is always considered unsorted */
+	pathnode->path.pathkeys = pathkeys;
 	pathnode->partitioned_rels = list_copy(partitioned_rels);
 
 	/*
@@ -1250,6 +1252,15 @@ create_append_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->first_partial_path = list_length(subpaths);
 	pathnode->subpaths = list_concat(subpaths, partial_subpaths);
 
+	/*
+	 * Apply query-wide LIMIT if known and path is for sole base relation.
+	 * (Handling this at this low level is a bit klugy.)
+	 */
+	if (root && bms_equal(rel->relids, root->all_baserels))
+		pathnode->limit_tuples = root->limit_tuples;
+	else
+		pathnode->limit_tuples = -1.0;
+
 	foreach(l, subpaths)
 	{
 		Path	   *subpath = (Path *) lfirst(l);
@@ -1263,7 +1274,7 @@ create_append_path(PlannerInfo *root, RelOptInfo *rel,
 
 	Assert(!parallel_aware || pathnode->path.parallel_safe);
 
-	cost_append(pathnode);
+	cost_append(pathnode, root, pathkeys);
 
 	/* If the caller provided a row estimate, override the computed value. */
 	if (rows >= 0)

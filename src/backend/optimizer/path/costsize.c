@@ -1832,7 +1832,7 @@ append_nonpartial_cost(List *subpaths, int numpaths, int parallel_workers)
  * pretty cheap node.
  */
 void
-cost_append(AppendPath *apath)
+cost_append(AppendPath *apath, PlannerInfo *root, List *pathkeys)
 {
 	ListCell   *l;
 
@@ -1845,21 +1845,49 @@ cost_append(AppendPath *apath)
 	if (!apath->path.parallel_aware)
 	{
 		Path	   *subpath = (Path *) linitial(apath->subpaths);
+		double		limit_tuples;
 
-		/*
-		 * Startup cost of non-parallel-aware Append is the startup cost of
-		 * first subpath.
-		 */
-		apath->path.startup_cost = subpath->startup_cost;
+		limit_tuples = apath->limit_tuples;
 
 		/* Compute rows and costs as sums of subplan rows and costs. */
 		foreach(l, apath->subpaths)
 		{
 			Path	   *subpath = (Path *) lfirst(l);
 
+			if (pathkeys && !pathkeys_contained_in(pathkeys,
+						subpath->pathkeys))
+			{
+				Path		sort_path;
+
+				cost_sort(&sort_path,
+						root,
+						pathkeys,
+						subpath->total_cost,
+						subpath->rows,
+						subpath->pathtarget->width,
+						0.0,
+						work_mem,
+						limit_tuples);
+				subpath->startup_cost += sort_path.startup_cost;
+				subpath->total_cost += sort_path.total_cost;
+			}
+
 			apath->path.rows += subpath->rows;
 			apath->path.total_cost += subpath->total_cost;
+
+			/*
+			 * Consider that the number of tuples to be fetched decreases for
+			 * every subsequent partition
+			 */
+			if(limit_tuples > 0)
+				limit_tuples = Max(1, limit_tuples - subpath->rows);
 		}
+
+		/*
+		 * Startup cost of non-parallel-aware Append is the startup cost of
+		 * first subpath.
+		 */
+		apath->path.startup_cost = subpath->startup_cost;
 	}
 	else						/* parallel-aware */
 	{

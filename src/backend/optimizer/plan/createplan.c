@@ -1015,8 +1015,19 @@ create_append_plan(PlannerInfo *root, AppendPath *best_path)
 {
 	Append	   *plan;
 	List	   *tlist = build_path_tlist(root, &best_path->path);
+	List	   *pathkeys = best_path->path.pathkeys;
 	List	   *subplans = NIL;
 	ListCell   *subpaths;
+	int			p_numsortkeys;
+	int			numsortkeys;
+	AttrNumber *p_sortColIdx;
+	AttrNumber *sortColIdx;
+	Oid		   *p_sortOperators;
+	Oid		   *sortOperators;
+	Oid		   *p_collations;
+	Oid		   *collations;
+	bool	   *p_nullsFirst;
+	bool	   *nullsFirst;
 
 	/*
 	 * The subpaths list could be empty, if every child was proven empty by
@@ -1042,6 +1053,25 @@ create_append_plan(PlannerInfo *root, AppendPath *best_path)
 		return plan;
 	}
 
+	if (pathkeys)
+	{
+		Append *dummy = make_append(subplans, best_path->first_partial_path,
+						   tlist, best_path->partitioned_rels);
+
+		copy_generic_path_info(&dummy->plan, (Path *) best_path);
+
+		/* Compute sort column info, and adjust Append's tlist as needed */
+		(void) prepare_sort_from_pathkeys(&dummy->plan, pathkeys,
+										  best_path->path.parent->relids,
+										  NULL,
+										  true,
+										  &p_numsortkeys,
+										  &p_sortColIdx,
+										  &p_sortOperators,
+										  &p_collations,
+										  &p_nullsFirst);
+	}
+
 	/* Build the plan for each child */
 	foreach(subpaths, best_path->subpaths)
 	{
@@ -1050,6 +1080,48 @@ create_append_plan(PlannerInfo *root, AppendPath *best_path)
 
 		/* Must insist that all children return the same tlist */
 		subplan = create_plan_recurse(root, subpath, CP_EXACT_TLIST);
+
+		if (pathkeys)
+		{
+			/* Compute sort column info, and adjust subplan's tlist as needed */
+			subplan = prepare_sort_from_pathkeys(subplan, pathkeys,
+												 subpath->parent->relids,
+												 p_sortColIdx,
+												 false,
+												 &numsortkeys,
+												 &sortColIdx,
+												 &sortOperators,
+												 &collations,
+												 &nullsFirst);
+
+			/*
+			 * Check that we got the same sort key information.  We just Assert
+			 * that the sortops match, since those depend only on the pathkeys;
+			 * but it seems like a good idea to check the sort column numbers
+			 * explicitly, to ensure the tlists really do match up.
+			 */
+			Assert(numsortkeys == p_numsortkeys);
+			if (memcmp(sortColIdx, p_sortColIdx,
+					   numsortkeys * sizeof(AttrNumber)) != 0)
+				elog(ERROR, "Append child's targetlist doesn't match MergeAppend");
+			Assert(memcmp(sortOperators, p_sortOperators,
+						  numsortkeys * sizeof(Oid)) == 0);
+			Assert(memcmp(collations, p_collations,
+						  numsortkeys * sizeof(Oid)) == 0);
+			Assert(memcmp(nullsFirst, p_nullsFirst,
+						  numsortkeys * sizeof(bool)) == 0);
+
+			/* Now, insert a Sort node if subplan isn't sufficiently ordered */
+			if (!pathkeys_contained_in(pathkeys, subpath->pathkeys))
+			{
+				Sort	   *sort = make_sort(subplan, numsortkeys,
+											 sortColIdx, sortOperators,
+											 collations, nullsFirst);
+
+				label_sort_with_costsize(root, sort, best_path->limit_tuples);
+				subplan = (Plan *) sort;
+			}
+		}
 
 		subplans = lappend(subplans, subplan);
 	}
@@ -5545,8 +5617,8 @@ make_sort(Plan *lefttree, int numCols,
  * prepare_sort_from_pathkeys
  *	  Prepare to sort according to given pathkeys
  *
- * This is used to set up for Sort, MergeAppend, and Gather Merge nodes.  It
- * calculates the executor's representation of the sort key information, and
+ * This is used to set up for Sort, MergeAppend, Append and Gather Merge nodes.
+ * It calculates the executor's representation of the sort key information, and
  * adjusts the plan targetlist if needed to add resjunk sort columns.
  *
  * Input parameters:

@@ -1735,10 +1735,104 @@ generate_sorted_append_paths(PlannerInfo *root, RelOptInfo *rel,
 
 	if (rel->part_sorted && has_useful_pathkeys(root, rel))
 	{
-		List *part_pathkeys;
+		List *part_pathkeys = NIL;
+		List *partitions_asc = NIL;
+		List *partitions_desc = NIL;
+		int i;
 
 		part_pathkeys = generate_pathkeys_for_partitioned_table(root, rel);
-}
+
+		for (i = 0; i < rel->nparts; i++)
+		{
+			partitions_asc = lappend(partitions_asc, rel->part_rels[i]);
+			partitions_desc = lcons(rel->part_rels[i], partitions_desc);
+		}
+
+		foreach (lcp, part_pathkeys)
+		{
+			List *pathkeys = (List *) lfirst(lcp);
+			PathKey *first = linitial(pathkeys);
+			List *ordered_patitions = first->pk_strategy == BTLessStrategyNumber
+				? partitions_asc : partitions_desc;
+			List *startup_subpaths = NIL;
+			List *total_subpaths = NIL;
+			List *sequential_subpaths = NIL;
+			bool startup_neq_total = false;
+			ListCell *lcr;
+
+			if (compare_pathkeys(pathkeys, root->query_pathkeys) ==
+					PATHKEYS_DIFFERENT)
+				continue;
+
+			foreach(lcr, ordered_patitions)
+			{
+				RelOptInfo *childrel = lfirst(lcr);
+				Path *cheapest_startup,
+					 *cheapest_total,
+					 *sequential = NULL;
+
+				/* The partition may have been pruned */
+				if (!childrel)
+					continue;
+
+				cheapest_startup =
+					get_cheapest_path_for_pathkeys(childrel->pathlist,
+							root->query_pathkeys,
+							NULL,
+							STARTUP_COST,
+							false);
+				cheapest_total =
+					get_cheapest_path_for_pathkeys(childrel->pathlist,
+							root->query_pathkeys,
+							NULL,
+							TOTAL_COST,
+							false);
+
+				/*
+				 * If we can't find any path with the right order, just use the
+				 * cheapest total path; we'll have to sort it later
+				 */
+				if (cheapest_startup == NULL || cheapest_total == NULL)
+				{
+					cheapest_startup = cheapest_total =
+						childrel->cheapest_total_path;
+					/* We should have an unparameterized path for this child */
+					Assert(cheapest_total->param_info == NULL);
+				}
+
+				/*
+				 * Force an unordered path, which could be cheapest in corner
+				 * cases where orderedpaths are too expensive
+				 */
+				sequential = childrel->cheapest_total_path;
+
+				/*
+				 * Notice whether we actually have different paths for the
+				 * "cheapest" and "total" cases; frequently there will be no
+				 * point in two create_append_path() calls.
+				 */
+				if (cheapest_startup != cheapest_total)
+					startup_neq_total = true;
+
+				startup_subpaths = lappend(startup_subpaths, cheapest_startup);
+				total_subpaths = lappend(total_subpaths, cheapest_total);
+				sequential_subpaths = lappend(sequential_subpaths, sequential);
+
+				if (startup_subpaths)
+					add_path(rel, (Path *) create_append_path(root, rel,
+								startup_subpaths, NULL, root->query_pathkeys,
+								NULL, 0, false, NIL, -1));
+				if (startup_neq_total)
+					add_path(rel, (Path *) create_append_path(root, rel,
+								total_subpaths, NULL, root->query_pathkeys,
+								NULL, 0, false, NIL, -1));
+				if (sequential_subpaths)
+					add_path(rel, (Path *) create_append_path(root, rel,
+								sequential_subpaths, NULL, root->query_pathkeys,
+								NULL, 0, false, NIL, -1));
+			}
+		}
+	}
 
 	foreach(lcp, all_child_pathkeys)
 	{

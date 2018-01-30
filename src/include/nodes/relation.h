@@ -1272,6 +1272,7 @@ typedef struct AppendPath
 	/* RT indexes of non-leaf tables in a partition tree */
 	List	   *partitioned_rels;
 	List	   *subpaths;		/* list of component Paths */
+	double		limit_tuples;	/* hard limit on on output tuples, or -1 */
 
 	/* Index of first partial path in subpaths */
 	int			first_partial_path;
