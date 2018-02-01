@@ -1142,9 +1142,9 @@ get_relation_data_width(Oid relid, int32 *attr_widths)
 List *
 generate_pathkeys_for_partitioned_table(PlannerInfo *root, RelOptInfo *rel)
 {
-	List *asc_pathkeys = NIL;
-	List *desc_pathkeys = NIL;
-	List *all = NIL;
+	List *pathkeys = NIL;
+	ListCell *query_pathkeys_lc = list_head(root->query_pathkeys);
+	int pk_strategy = InvalidStrategy;
 	int i;
 
 	Assert(rel->part_sorted);
@@ -1156,6 +1156,8 @@ generate_pathkeys_for_partitioned_table(PlannerInfo *root, RelOptInfo *rel)
 		Oid equality_op;
 		List *opfamilies;
 		EquivalenceClass *ec;
+		PathKey *query_pathkey = lfirst(query_pathkeys_lc);
+		Oid opfamily = InvalidOid;
 
 		equality_op =
 			get_opfamily_member(rel->part_scheme->partopfamily[i],
@@ -1170,27 +1172,44 @@ generate_pathkeys_for_partitioned_table(PlannerInfo *root, RelOptInfo *rel)
 				rel->part_scheme->parttypcoll[i],
 				0, rel->relids, true);
 
-		asc_pathkeys = lappend(asc_pathkeys,
-				make_canonical_pathkey(root, ec,
-					rel->part_scheme->partopfamily[i],
-					BTLessStrategyNumber, false));
-		desc_pathkeys = lappend(desc_pathkeys,
-				make_canonical_pathkey(root, ec,
-					rel->part_scheme->partopfamily[i],
-					BTGreaterStrategyNumber, true));
-	}
+		opfamily = rel->part_scheme->partopfamily[i];
 
-	if (list_length(asc_pathkeys) > list_length(root->query_pathkeys))
-	{
-		asc_pathkeys = truncate_useless_pathkeys(root, rel, asc_pathkeys);
-		desc_pathkeys = truncate_useless_pathkeys(root, rel, desc_pathkeys);
-	}
+		/*
+		 * We support both BTGreater and BTLess strategy, but not mixing
+		 * both together.
+		 */
+		if (pk_strategy == InvalidOid)
+			pk_strategy = query_pathkey->pk_strategy;
 
-	if (asc_pathkeys)
-		all = lappend(all, asc_pathkeys);
-	if (desc_pathkeys)
-		all = lappend(all, desc_pathkeys);
-	return all;
+		if((ec == query_pathkey->pk_eclass) &&
+		   (opfamily == query_pathkey->pk_opfamily) &&
+		   (pk_strategy == query_pathkey->pk_strategy))
+		{
+			/*
+			 * Since a partition key cannot be null, we don't care at all what
+			 * the value of NULLS FIRST / LAST is, just make sure we're
+			 * compatible with the query.
+			 */
+			pathkeys = lappend(pathkeys,
+				make_canonical_pathkey(root, ec, opfamily,
+					pk_strategy, query_pathkey->pk_nulls_first));
+		}
+		else
+		{
+			/* The pathkey doesn't match, so bail out early. */
+			return NIL;
+		}
+
+		query_pathkeys_lc = lnext(query_pathkeys_lc);
+		/* We have an entry for every query_pathkey, return that */
+		if(query_pathkeys_lc == NULL)
+			return pathkeys;
+	}
+	/*
+	 * We reached the end of the partition key without exhausting every query
+	 * path keys, bail out.
+	 */
+	return NIL;
 }
 
 
