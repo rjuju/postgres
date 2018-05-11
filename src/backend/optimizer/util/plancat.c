@@ -57,6 +57,10 @@ int			constraint_exclusion = CONSTRAINT_EXCLUSION_PARTITION;
 
 /* Hook for plugins to get control in get_relation_info() */
 get_relation_info_hook_type get_relation_info_hook = NULL;
+/* Hook for plugings to simulate partitioning*/
+RelationGetPartitionDesc_hook_type RelationGetPartitionDesc_hook = NULL;
+RelationGetPartitionKey_hook_type RelationGetPartitionKey_hook = NULL;
+generate_partition_qual_hook_type generate_partition_qual_hook = NULL;
 
 
 static void get_relation_foreign_keys(PlannerInfo *root, RelOptInfo *rel,
@@ -72,8 +76,9 @@ static List *build_index_tlist(PlannerInfo *root, IndexOptInfo *index,
 static List *get_relation_statistics(RelOptInfo *rel, Relation relation);
 static void set_relation_partition_info(PlannerInfo *root, RelOptInfo *rel,
 							Relation relation);
-static PartitionScheme find_partition_scheme(PlannerInfo *root, Relation rel);
-static void set_baserel_partition_key_exprs(Relation relation,
+static PartitionScheme find_partition_scheme(PlannerInfo *root,
+							PartitionKey partkey);
+static void set_baserel_partition_key_exprs(PartitionKey partkey,
 								RelOptInfo *rel);
 
 /*
@@ -1905,14 +1910,35 @@ set_relation_partition_info(PlannerInfo *root, RelOptInfo *rel,
 
 	Assert(relation->rd_rel->relkind == RELKIND_PARTITIONED_TABLE);
 
-	partdesc = RelationGetPartitionDesc(relation);
-	partkey = RelationGetPartitionKey(relation);
-	rel->part_scheme = find_partition_scheme(root, relation);
+	if (RelationGetPartitionDesc_hook && RelationGetPartitionKey_hook)
+	{
+		partdesc = (*RelationGetPartitionDesc_hook) (rel);
+		partkey = (*RelationGetPartitionKey_hook) (rel);
+	}
+
+	if (!partdesc || !partkey)
+	{
+		partdesc = RelationGetPartitionDesc(relation);
+		partkey = RelationGetPartitionKey(relation);
+	}
+
+	rel->part_scheme = find_partition_scheme(root, partkey);
 	Assert(partdesc != NULL && rel->part_scheme != NULL);
 	rel->boundinfo = partition_bounds_copy(partdesc->boundinfo, partkey);
 	rel->nparts = partdesc->nparts;
-	set_baserel_partition_key_exprs(relation, rel);
-	rel->partition_qual = RelationGetPartitionQual(relation);
+	set_baserel_partition_key_exprs(partkey, rel);
+
+	if(generate_partition_qual_hook)
+	{
+		List *quals = (*generate_partition_qual_hook) (rel);
+
+		if (quals)
+			rel->partition_qual = quals;
+	}
+
+	if (!rel->partition_qual)
+		rel->partition_qual = RelationGetPartitionQual(relation);
+
 }
 
 /*
@@ -1921,9 +1947,8 @@ set_relation_partition_info(PlannerInfo *root, RelOptInfo *rel,
  * Find or create a PartitionScheme for this Relation.
  */
 static PartitionScheme
-find_partition_scheme(PlannerInfo *root, Relation relation)
+find_partition_scheme(PlannerInfo *root, PartitionKey partkey)
 {
-	PartitionKey partkey = RelationGetPartitionKey(relation);
 	ListCell   *lc;
 	int			partnatts,
 				i;
@@ -2029,10 +2054,9 @@ find_partition_scheme(PlannerInfo *root, Relation relation)
  * nodes.  All Var nodes are restamped with the relid of given relation.
  */
 static void
-set_baserel_partition_key_exprs(Relation relation,
+set_baserel_partition_key_exprs(PartitionKey partkey,
 								RelOptInfo *rel)
 {
-	PartitionKey partkey = RelationGetPartitionKey(relation);
 	int			partnatts;
 	int			cnt;
 	List	  **partexprs;

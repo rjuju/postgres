@@ -23,6 +23,13 @@ typedef void (*get_relation_info_hook_type) (PlannerInfo *root,
 											 bool inhparent,
 											 RelOptInfo *rel);
 extern PGDLLIMPORT get_relation_info_hook_type get_relation_info_hook;
+/* Hook for plugings to simulate partitioning*/
+typedef PartitionDesc (*RelationGetPartitionDesc_hook_type) (RelOptInfo *rel);
+extern PGDLLIMPORT RelationGetPartitionDesc_hook_type RelationGetPartitionDesc_hook;
+typedef PartitionKey (*RelationGetPartitionKey_hook_type) (RelOptInfo *rel);
+extern PGDLLIMPORT RelationGetPartitionKey_hook_type RelationGetPartitionKey_hook;
+typedef List *(*generate_partition_qual_hook_type) (RelOptInfo *rel);
+extern PGDLLIMPORT generate_partition_qual_hook_type generate_partition_qual_hook;
 
 
 extern void get_relation_info(PlannerInfo *root, Oid relationObjectId,
