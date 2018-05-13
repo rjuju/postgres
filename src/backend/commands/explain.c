@@ -46,6 +46,8 @@ ExplainOneQuery_hook_type ExplainOneQuery_hook = NULL;
 
 /* Hook for plugins to get control in explain_get_index_name() */
 explain_get_index_name_hook_type explain_get_index_name_hook = NULL;
+/* Hook for plugins to get control in ExplainTargetRel() */
+explain_get_rel_name_hook_type explain_get_rel_name_hook = NULL;
 
 
 /* OR-able flags for ExplainXMLTag() */
@@ -2887,7 +2889,10 @@ ExplainTargetRel(Plan *plan, Index rti, ExplainState *es)
 		case T_ModifyTable:
 			/* Assert it's on a real relation */
 			Assert(rte->rtekind == RTE_RELATION);
-			objectname = get_rel_name(rte->relid);
+			if (explain_get_rel_name_hook)
+				objectname = (char *) (*explain_get_rel_name_hook) (rte);
+			if(!objectname)
+				objectname = get_rel_name(rte->relid);
 			if (es->verbose)
 				namespace = get_namespace_name(get_rel_namespace(rte->relid));
 			objecttag = "Relation Name";
