@@ -52,6 +52,9 @@
 #include "utils/rel.h"
 #include "utils/selfuncs.h"
 
+/* Hook for plugins to get control in expand_inherited_rtentry() */
+expand_inherited_rtentry_hook_type expand_inherited_rtentry_hook = NULL;
+
 
 typedef struct
 {
@@ -1480,7 +1483,11 @@ expand_inherited_tables(PlannerInfo *root)
 	{
 		RangeTblEntry *rte = (RangeTblEntry *) lfirst(rl);
 
-		expand_inherited_rtentry(root, rte, rti);
+		/* this is new hook point */
+		if(expand_inherited_rtentry_hook &&
+		   !(*expand_inherited_rtentry_hook)(root, rte, rti))
+			expand_inherited_rtentry(root, rte, rti);
+
 		rl = lnext(rl);
 	}
 }

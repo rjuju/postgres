@@ -45,6 +45,14 @@ extern PlanRowMark *get_plan_rowmark(List *rowmarks, Index rtindex);
 /*
  * prototypes for prepunion.c
  */
+
+/* Hook for plugins to get control in expand_inherited_rtentry() */
+typedef bool (*expand_inherited_rtentry_hook_type) (PlannerInfo *root,
+													RangeTblEntry *rte,
+													Index rti);
+extern PGDLLIMPORT expand_inherited_rtentry_hook_type expand_inherited_rtentry_hook;
+
+
 extern RelOptInfo *plan_set_operations(PlannerInfo *root);
 
 extern void expand_inherited_tables(PlannerInfo *root);
