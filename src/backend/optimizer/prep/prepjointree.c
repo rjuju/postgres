@@ -2130,6 +2130,10 @@ perform_pullup_replace_vars(PlannerInfo *root,
 			wc->runCondition = (List *)
 				pullup_replace_vars((Node *) wc->runCondition, rvcontext);
 	}
+
+	parse->windowQual = (List *)
+		pullup_replace_vars((Node *) parse->windowQual, rvcontext);
+
 	if (parse->onConflict)
 	{
 		parse->onConflict->onConflictSet = (List *)

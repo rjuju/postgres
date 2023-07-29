@@ -203,6 +203,8 @@ typedef struct Query
 
 	List	   *windowClause;	/* a list of WindowClause's */
 
+	List	   *windowQual;		/* qualifications applied to windows */
+
 	List	   *distinctClause; /* a list of SortGroupClause's */
 
 	List	   *sortClause;		/* a list of SortGroupClause's */
@@ -1501,6 +1503,8 @@ typedef struct WindowClause
 	Node	   *endOffset;		/* expression for ending bound, if any */
 	/* qual to help short-circuit execution */
 	List	   *runCondition pg_node_attr(query_jumble_ignore);
+	/* QUALIFY quals */
+	List	   *qualifyClause pg_node_attr(query_jumble_ignore);
 	/* in_range function for startOffset */
 	Oid			startInRangeFunc pg_node_attr(query_jumble_ignore);
 	/* in_range function for endOffset */
@@ -1992,6 +1996,7 @@ typedef struct SelectStmt
 	bool		groupDistinct;	/* Is this GROUP BY DISTINCT? */
 	Node	   *havingClause;	/* HAVING conditional-expression */
 	List	   *windowClause;	/* WINDOW window_name AS (...), ... */
+	Node	   *qualifyClause;	/* QUALIFY ... */
 
 	/*
 	 * In a "leaf" node representing a VALUES list, the above fields are all

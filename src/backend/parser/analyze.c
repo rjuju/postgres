@@ -1388,13 +1388,22 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 										   stmt->limitOption);
 	qry->limitOption = stmt->limitOption;
 
+	/* transform QUALIFY */
+	qry->windowQual = transformQualifyClause(pstate, &qry->targetList,
+											 stmt->qualifyClause);
+
+	if (qry->windowQual && !pstate->p_hasWindowFuncs)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("QUALIFY requires at least one window functions to be "
+						"defined in the query"),
+				 parser_errposition(pstate,
+									exprLocation((Node *) stmt->qualifyClause))));
+
 	/* transform window clauses after we have seen all window functions */
 	qry->windowClause = transformWindowDefinitions(pstate,
 												   pstate->p_windowdefs,
 												   &qry->targetList);
-
-	qry->windowQual = transformWhereClause(pstate, stmt->qualifyClause,
-										 EXPR_KIND_QUALIFY, "QUALIFY");
 
 	/* resolve any still-unresolved output columns as being type text */
 	if (pstate->p_resolve_unknowns)

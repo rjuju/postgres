@@ -1079,6 +1079,9 @@ typedef struct WindowAgg
 	/* runCondition for display in EXPLAIN */
 	List	   *runConditionOrig;
 
+	/* qualify expression if any */
+	List	   *qualifyClause;
+
 	/* these fields are used with RANGE offset PRECEDING/FOLLOWING: */
 
 	/* in_range function for startOffset */

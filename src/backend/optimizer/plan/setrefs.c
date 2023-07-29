@@ -3337,9 +3337,16 @@ fix_windowagg_condition_expr_mutator(Node *node,
 		newvar = search_indexed_tlist_for_non_var((Expr *) node,
 												  context->subplan_itlist,
 												  context->newvarno);
+
+		/*
+		 * XXX The expression should be in the target list, but if it's part of
+		 * a QUALIFY clause that references a WindowFunc that's not in the
+		 * original target list the target entry will contain the full
+		 * expression rather than the WindowFunc itself, so not finding a Var
+		 * is expected.
+		 */
 		if (newvar)
 			return (Node *) newvar;
-		elog(ERROR, "WindowFunc not found in subplan target lists");
 	}
 
 	return expression_tree_mutator(node,

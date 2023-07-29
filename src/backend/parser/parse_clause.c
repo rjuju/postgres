@@ -2960,6 +2960,25 @@ transformWindowDefinitions(ParseState *pstate,
 }
 
 /*
+ * transformQualifyClause -
+ *		transform QUALIFY clause
+ *
+ */
+List *
+transformQualifyClause(ParseState *pstate, List **targetlist, Node *expr)
+{
+	TargetEntry *tle;
+
+	if (!expr)
+		return NIL;
+
+	tle = findTargetlistEntrySQL99(pstate, expr, targetlist,
+								   EXPR_KIND_QUALIFY);
+
+	return make_ands_implicit(tle->expr);
+}
+
+/*
  * transformDistinctClause -
  *	  transform a DISTINCT clause
  *

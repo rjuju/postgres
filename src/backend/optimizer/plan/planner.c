@@ -1458,7 +1458,12 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		 */
 		if (parse->hasWindowFuncs)
 		{
-			wflists = find_window_functions((Node *) root->processed_tlist,
+			List *all = root->processed_tlist;
+
+			if (list_length(parse->windowQual) > 0)
+				all = list_concat_copy(all, parse->windowQual);
+
+			wflists = find_window_functions((Node *) all,
 											list_length(parse->windowClause));
 			if (wflists->numWindowFuncs > 0)
 			{
@@ -1470,9 +1475,36 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 				optimize_window_clauses(root, wflists);
 
 				activeWindows = select_active_windows(root, wflists);
+
+				/*
+				 * See if we can also optimize any WindowClause in the QUALIFY
+				 * clause, if any.
+				 * This has to be done after processing the active windows, so
+				 * we can attach non optimizable quals to the first window, and
+				 * not a window that may be discarded.
+				 */
+				foreach(lc, parse->windowQual)
+				{
+					Node *qual = lfirst(lc);
+					Index winref = 0;
+					WindowClause *wc;
+
+					if (!keep_window_clause(root->parse, qual))
+						continue;
+
+					wc = list_nth_node(WindowClause, activeWindows, winref);
+					wc->qualifyClause = lappend(wc->qualifyClause, qual);
+				}
 			}
 			else
+			{
+				/*
+				 * The parser shouldn't accept a QUALIFY clause without any
+				 * window function anywhere in the query.
+				 */
+				Assert(parse->windowQual == NIL);
 				parse->hasWindowFuncs = false;
+			}
 		}
 
 		/*
@@ -4642,6 +4674,9 @@ create_one_window_path(PlannerInfo *root,
 		 */
 		if (!topwindow)
 			topqual = list_concat(topqual, wc->runCondition);
+
+		topqual = list_concat(topqual, wc->qualifyClause);
+		wc->qualifyClause = NIL;
 
 		path = (Path *)
 			create_windowagg_path(root, window_rel, path, window_target,
