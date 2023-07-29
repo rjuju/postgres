@@ -526,7 +526,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <node>	def_arg columnElem where_clause where_or_current_clause
 				a_expr b_expr c_expr AexprConst indirection_el opt_slice_bound
 				columnref in_expr having_clause func_table xmltable array_expr
-				OptWhereClause operator_def_arg
+				OptWhereClause operator_def_arg qualify_clause
 %type <list>	rowsfrom_item rowsfrom_list opt_col_def_list
 %type <boolean> opt_ordinality
 %type <list>	ExclusionConstraintList ExclusionConstraintElem
@@ -748,7 +748,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	POSITION PRECEDING PRECISION PRESERVE PREPARE PREPARED PRIMARY
 	PRIOR PRIVILEGES PROCEDURAL PROCEDURE PROCEDURES PROGRAM PUBLICATION
 
-	QUOTE
+	QUOTE QUALIFY
 
 	RANGE READ REAL REASSIGN RECHECK RECURSIVE REF_P REFERENCES REFERENCING
 	REFRESH REINDEX RELATIVE_P RELEASE RENAME REPEATABLE REPLACE REPLICA
@@ -12613,6 +12613,7 @@ simple_select:
 			SELECT opt_all_clause opt_target_list
 			into_clause from_clause where_clause
 			group_clause having_clause window_clause
+			qualify_clause
 				{
 					SelectStmt *n = makeNode(SelectStmt);
 
@@ -12624,11 +12625,13 @@ simple_select:
 					n->groupDistinct = ($7)->distinct;
 					n->havingClause = $8;
 					n->windowClause = $9;
+					n->qualifyClause = $10;
 					$$ = (Node *) n;
 				}
 			| SELECT distinct_clause target_list
 			into_clause from_clause where_clause
 			group_clause having_clause window_clause
+			qualify_clause
 				{
 					SelectStmt *n = makeNode(SelectStmt);
 
@@ -12641,6 +12644,7 @@ simple_select:
 					n->groupDistinct = ($7)->distinct;
 					n->havingClause = $8;
 					n->windowClause = $9;
+					n->qualifyClause = $10;
 					$$ = (Node *) n;
 				}
 			| values_clause							{ $$ = $1; }
@@ -15849,6 +15853,11 @@ window_specification: '(' opt_existing_window_name opt_partition_clause
 				}
 		;
 
+qualify_clause:
+			QUALIFY a_expr							{ $$ = $2; }
+			| /*EMPTY*/								{ $$ = NULL; }
+		;
+
 /*
  * If we see PARTITION, RANGE, ROWS or GROUPS as the first token after the '('
  * of a window_specification, we want the assumption to be that there is
@@ -17484,6 +17493,7 @@ reserved_keyword:
 			| ORDER
 			| PLACING
 			| PRIMARY
+			| QUALIFY
 			| REFERENCES
 			| RETURNING
 			| SELECT
