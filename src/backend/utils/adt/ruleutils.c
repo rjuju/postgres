@@ -5996,6 +5996,14 @@ get_basic_select_query(Query *query, deparse_context *context,
 	/* Add the WINDOW clause if needed */
 	if (query->windowClause != NIL)
 		get_rule_windowclause(query, context);
+
+	/* Add the QUALIFY clause if given */
+	if (query->windowQual != NIL)
+	{
+		appendContextKeyword(context, " QUALIFY ",
+							 -PRETTYINDENT_STD, PRETTYINDENT_STD, 0);
+		get_rule_expr((Node *) query->windowQual, context, false);
+	}
 }
 
 /* ----------
