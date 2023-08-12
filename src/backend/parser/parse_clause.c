@@ -2959,6 +2959,59 @@ transformWindowDefinitions(ParseState *pstate,
 	return result;
 }
 
+/* Parser pre_columnref_hook for QUALIFY column parsing.
+ *
+ * The QUALIFY clause allows to reference target entries by their name, iff the
+ * underlying element is a WindowFunc.
+ *
+ * We still try to find a matching element even if a real matching Var was
+ * found, to be able to detect an ambiguous column reference.
+ */
+static Node *
+replace_qualify_column_ref(ParseState *pstate, ColumnRef *cref, Node *var)
+{
+	Node   *node = NULL;
+	bool	found = false;
+
+	if (list_length(cref->fields) == 1)
+	{
+		List	   *tlist = (List *) pstate->p_ref_hook_state;
+		ListCell   *lc;
+		Node	   *field1 = (Node *) linitial(cref->fields);
+		char	   *colname = strVal(field1);
+
+		foreach(lc, tlist)
+		{
+			TargetEntry *tle = (TargetEntry *) lfirst(lc);
+
+			if (!tle->resname)
+				continue;
+
+			if (!IsA(tle->expr, WindowFunc))
+				continue;
+
+			if (strcmp(tle->resname, colname) != 0)
+				continue;
+
+			/*
+			 * Error out if the given colname is present multiple time,
+			 * everytime for a WindowFunc, in the target list.
+			 */
+			if (found)
+				ereport(ERROR,
+						(errcode(ERRCODE_AMBIGUOUS_COLUMN),
+						 errmsg("column reference \"%s\" is ambiguous",
+							    colname),
+						 parser_errposition(pstate, cref->location)));
+
+			node = (Node *) tle->expr;
+			found = true;
+		}
+	}
+
+	return node;
+}
+
 /*
  * transformQualifyClause -
  *		transform QUALIFY clause
@@ -2972,8 +3025,14 @@ transformQualifyClause(ParseState *pstate, List **targetlist, Node *expr)
 	if (!expr)
 		return NIL;
 
+	pstate->p_post_columnref_hook = replace_qualify_column_ref;
+	pstate->p_ref_hook_state = (void *) *targetlist;
+
 	tle = findTargetlistEntrySQL99(pstate, expr, targetlist,
 								   EXPR_KIND_QUALIFY);
+
+	pstate->p_post_columnref_hook = NULL;
+	pstate->p_ref_hook_state = NULL;
 
 	return make_ands_implicit(tle->expr);
 }
