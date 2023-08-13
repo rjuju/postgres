@@ -1278,6 +1278,95 @@ SELECT * FROM
    FROM empsalary) emp
 WHERE c = 1;
 
+-- Test QUALIFY clause
+-- QUALIFY shouldn't be allowed without any window function
+SELECT * FROM empsalary QUALIFY empno = 1;
+SELECT * FROM empsalary WINDOW w AS () QUALIFY empno = 1;
+
+-- QUALIFY without window function is valid if there's some in the target list
+SELECT row_number() OVER (ORDER BY empno) AS rn
+FROM empsalary QUALIFY empno < 5
+ORDER BY empno;
+
+-- QUALIFY with a window function is valid even if target list doesn't have any
+SELECT empno
+FROM empsalary
+QUALIFY row_number() OVER (ORDER BY empno) = 1;
+
+-- QUALIFY allows referencing target list with matching alias iff they're
+-- window functions, and if it's not ambiguous
+SELECT empno, row_number() OVER (PARTITION BY empno) AS empno
+FROM empsalary
+QUALIFY empno = 2;
+
+SELECT row_number() OVER (PARTITION BY empno) AS rn,
+       row_number() OVER (ORDER BY empno) AS rn
+FROM empsalary
+QUALIFY rn = 2;
+
+SELECT empno, row_number() OVER (ORDER BY empno DESC) AS rn
+FROM empsalary
+QUALIFY rn = 2
+ORDER BY empno;
+
+-- QUALIFY should be able to use run condition optimisation
+EXPLAIN (COSTS OFF)
+SELECT empno,
+       row_number() OVER (ORDER BY empno) rn
+FROM empsalary
+QUALIFY rn < 3;
+
+-- The following 3 statements should result the same result.
+SELECT empno,
+       row_number() OVER (ORDER BY empno) rn
+FROM empsalary
+QUALIFY rn < 3;
+
+SELECT empno,
+       row_number() OVER (ORDER BY empno) rn
+FROM empsalary
+QUALIFY 3 > rn;
+
+SELECT empno,
+       row_number() OVER (ORDER BY empno) rn
+FROM empsalary
+QUALIFY 2 >= rn;
+
+-- Ensure r <= 3 is pushed down into the run condition of the window agg
+EXPLAIN (COSTS OFF)
+SELECT empno,
+       salary,
+       rank() OVER (ORDER BY salary DESC) r
+FROM empsalary
+QUALIFY r <= 3;
+
+SELECT empno,
+       salary,
+       rank() OVER (ORDER BY salary DESC) r
+FROM empsalary
+QUALIFY r <= 3;
+
+-- Ensure dr = 1 is converted to dr <= 1 to get all rows leading up to dr = 1
+EXPLAIN (COSTS OFF)
+SELECT empno,
+       salary,
+       dense_rank() OVER (ORDER BY salary DESC) dr
+FROM empsalary
+QUALIFY dr = 1;
+
+SELECT empno,
+       salary,
+       dense_rank() OVER (ORDER BY salary DESC) dr
+FROM empsalary
+QUALIFY dr = 1;
+
+-- QUALIFY clauses should be deparsed
+CREATE VIEW v_qualify AS SELECT empno
+                         FROM empsalary
+                         QUALIFY row_number() OVER (PARTITION BY depname) = 1
+                         ORDER BY enroll_date;
+SELECT pg_get_viewdef('v_qualify');
+
 -- Test Sort node collapsing
 EXPLAIN (COSTS OFF)
 SELECT * FROM
@@ -1367,6 +1456,7 @@ SELECT * FROM
 WHERE first_emp = 1 OR last_emp = 1;
 
 -- cleanup
+DROP VIEW v_qualify;
 DROP TABLE empsalary;
 
 -- test user-defined window function with named args and default args
