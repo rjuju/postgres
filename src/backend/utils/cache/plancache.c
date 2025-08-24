@@ -185,6 +185,7 @@ CreateCachedPlan(RawStmt *raw_parse_tree,
 				 CommandTag commandTag)
 {
 	CachedPlanSource *plansource;
+	char	   *query;
 	MemoryContext source_context;
 	MemoryContext oldcxt;
 
@@ -207,11 +208,37 @@ CreateCachedPlan(RawStmt *raw_parse_tree,
 	 */
 	oldcxt = MemoryContextSwitchTo(source_context);
 
+	/*
+	 * If we got a parse tree, make sure we only store the relevant part of the
+	 * query string.  Otherwise just use the original query string.
+	 */
+	if (raw_parse_tree != NULL)
+	{
+		const char *cleaned;
+		int     location, len;
+
+		location = raw_parse_tree->stmt_location;
+		len = raw_parse_tree->stmt_len;
+
+		cleaned = (char *) CleanQuerytext(query_string, &location, &len);
+
+		if (len == 0)
+			query = pstrdup(cleaned);
+		else
+		{
+			query = palloc(sizeof(char) * (len + 1));
+			memcpy(query, cleaned, sizeof(char) + len);
+			query[len] = '\0';
+		}
+	}
+	else
+		query = pstrdup(query_string);
+
 	plansource = (CachedPlanSource *) palloc0(sizeof(CachedPlanSource));
 	plansource->magic = CACHEDPLANSOURCE_MAGIC;
 	plansource->raw_parse_tree = copyObject(raw_parse_tree);
 	plansource->analyzed_parse_tree = NULL;
-	plansource->query_string = pstrdup(query_string);
+	plansource->query_string = query;
 	MemoryContextSetIdentifier(source_context, plansource->query_string);
 	plansource->commandTag = commandTag;
 	plansource->param_types = NULL;

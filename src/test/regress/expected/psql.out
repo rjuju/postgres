@@ -167,10 +167,10 @@ LINE 1: SELECT $1, $2
 \close_prepared stmt2
 \close_prepared stmt2
 SELECT name, statement FROM pg_prepared_statements ORDER BY name;
- name  |   statement    
--------+----------------
- stmt1 | SELECT 2 
- stmt3 | SELECT $1, $2 
+ name  |   statement   
+-------+---------------
+ stmt1 | SELECT 2
+ stmt3 | SELECT $1, $2
 (2 rows)
 
 -- \bind (extended query protocol)
