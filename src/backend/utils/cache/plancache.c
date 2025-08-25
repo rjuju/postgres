@@ -215,20 +215,20 @@ CreateCachedPlan(RawStmt *raw_parse_tree,
 	if (raw_parse_tree != NULL)
 	{
 		const char *cleaned;
-		int     location, len;
+		int     *location, *len;
 
-		location = raw_parse_tree->stmt_location;
-		len = raw_parse_tree->stmt_len;
+		location = &raw_parse_tree->stmt_location;
+		len = &raw_parse_tree->stmt_len;
 
-		cleaned = (char *) CleanQuerytext(query_string, &location, &len);
+		cleaned = (char *) CleanQuerytext(query_string, location, len);
 
 		if (len == 0)
 			query = pstrdup(cleaned);
 		else
 		{
-			query = palloc(sizeof(char) * (len + 1));
-			memcpy(query, cleaned, sizeof(char) + len);
-			query[len] = '\0';
+			query = palloc(sizeof(char) * ((*len) + 1));
+			memcpy(query, cleaned, sizeof(char) + (*len));
+			query[*len] = '\0';
 		}
 	}
 	else
